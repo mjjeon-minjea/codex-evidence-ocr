@@ -1,0 +1,26 @@
+# 실제 원본 및 실행 산출물
+/input/
+/outputs/
+/run/
+/tmp/
+/work/
+
+# Office·스캔 원본의 실수 유입 방지
+*.pdf
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+
+# 로컬 환경
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+.env

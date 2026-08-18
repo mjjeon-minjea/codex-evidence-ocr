@@ -1,0 +1,4 @@
+interface:
+  display_name: "Evidence OCR"
+  short_description: "Evidence-backed PDF and scan OCR workflow"
+  default_prompt: "Use $evidence-ocr to turn a PDF or scan into evidence-backed OCR output."
