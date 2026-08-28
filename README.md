@@ -1,6 +1,7 @@
 # Evidence OCR
 
 > PDF와 스캔 이미지를 **원본 해시·페이지 이미지·OCR 결과·검토 큐가 연결된 증거 패키지**로 변환하는 로컬 우선 OCR 워크플로입니다.
+> 해당링크를 CODEX 대화창에 붙여넣기하여 "해당 깃허브 설치해서 OCR 판독기 폴더 구성과 세팅 해줘" 해당문구를 입력하세요
 
 [![Status](https://img.shields.io/badge/status-V0.1-2563EB)](https://github.com/mjjeon-minjea/codex-evidence-ocr)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
