@@ -4,8 +4,8 @@
 > 해당링크를 CODEX 대화창에 붙여넣기하여 "해당 깃허브 설치해서 OCR 판독기 폴더 구성과 세팅 해줘" 해당문구를 입력하세요
 
 [![Status](https://img.shields.io/badge/status-V0.1-2563EB)](https://github.com/mjjeon-minjea/codex-evidence-ocr)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/unit%20tests-3%2F3%20passing-16A34A)](#검증)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-unittest-16A34A)](#검증)
 [![Inputs](https://img.shields.io/badge/input-PDF%20%7C%20PNG%20%7C%20JPG%20%7C%20TIFF-7C3AED)](#지원-입력)
 [![Review](https://img.shields.io/badge/decision-human%20review%20required-F59E0B)](#ocr-분류와-판정-경계)
 [![License](https://img.shields.io/badge/license-not%20selected-6B7280)](#라이선스)
@@ -60,7 +60,7 @@ Evidence OCR은 원본을 변경하지 않고 다음 질문에 답할 수 있는
 - PNG, JPG, JPEG, TIF, TIFF 이미지를 단일 페이지 입력으로 처리
 - Tesseract `image_to_data` 기반의 페이지별 OCR 수행
 - 인식 단어별 텍스트·신뢰도·좌표·크기 기록
-- 원본 파일의 SHA-256 계산
+- 처리 전후 원본 SHA-256을 비교하고, 원본이 변경되면 성공 manifest 생성 중단
 - 페이지별 OCR JSON과 일반 텍스트 생성
 - 평균 신뢰도와 텍스트 유무를 이용한 검토 우선순위 분류
 - 검토가 필요한 페이지만 `review_queue.csv`에 기록
@@ -92,7 +92,7 @@ flowchart LR
 
 ### 1. 필수 환경
 
-- Python 3.11 이상 권장
+- Python 3.11 권장: 아래 가상환경도 3.11로 생성합니다.
 - Tesseract OCR 실행 파일
 - 사용할 OCR 언어 데이터
   - 기본값: 한국어 `kor` + 영어 `eng`
@@ -104,13 +104,15 @@ tesseract --version
 tesseract --list-langs
 ```
 
+명령을 찾지 못하면 Tesseract 설치 폴더를 현재 터미널의 `PATH`에 추가한 뒤 다시 확인합니다. 처리기는 출력 폴더를 만들기 전에 Python 패키지, Tesseract 실행 파일과 요청 언어 데이터를 검사합니다.
+
 ### 2. Python 환경 준비
 
 ```powershell
 git clone https://github.com/mjjeon-minjea/codex-evidence-ocr.git
 Set-Location .\codex-evidence-ocr
 
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
@@ -173,10 +175,15 @@ python skills/evidence-ocr/scripts/process_document.py INPUT \
 
 - 입력 파일을 찾을 수 없음
 - 지원하지 않는 파일 형식
+- PDF에 페이지가 없음
 - DPI가 `72–600` 범위를 벗어남
 - 출력 폴더가 이미 존재하며 비어 있지 않음
 - PyMuPDF, Pillow 또는 pytesseract가 설치되지 않음
 - Tesseract 실행 파일을 찾을 수 없음
+- 요청한 Tesseract 언어 데이터가 없음
+- 처리 도중 원본 파일이 변경됨
+
+완료된 실행에만 `manifest.json`을 기록합니다. 처리 중 실패해 페이지 파일이 남았다면 불완전한 결과이며, 다음 실행은 새 출력 폴더를 사용합니다.
 
 ## 산출물과 출력 계약
 
@@ -303,7 +310,8 @@ codex-evidence-ocr/
 │     └─ scripts/
 │        └─ process_document.py
 └─ tests/
-   └─ test_process_document.py
+   ├─ test_process_document.py
+   └─ test_pipeline.py
 ```
 
 ### Codex 스킬로 재사용
@@ -324,13 +332,22 @@ codex-evidence-ocr/
 python -m unittest discover -s tests -v
 ```
 
-현재 시험은 OCR 분류 경계 세 가지를 확인합니다.
+시험은 OCR 분류 경계와 원본 보존, 실패 조건, 합성 자료의 전체 CLI 처리를 확인합니다.
 
 | 시험 | 기대 결과 |
 |---|---|
 | 텍스트 없음 | `OCR_NO_TEXT` |
 | 신뢰도 `84.99` | `OCR_REVIEW_REQUIRED` |
 | 신뢰도 `85.0` | `OCR_READY_FOR_REVIEW` |
+| 처리 중 원본 변경 | 실패, 성공 manifest 없음 |
+| 0페이지 PDF | 실패, 성공 manifest 없음 |
+| 의존성·실행 파일·언어 데이터 누락 | 출력 폴더 생성 전 실패 |
+| 합성 PNG와 2페이지 PDF | 실제 OCR, 페이지 수·해시·산출물 연결 검증 |
+| 같은 출력 폴더 재사용 | 거부, 기존 결과 보존 |
+
+전체 OCR 시험에는 Tesseract와 `kor`, `eng` 데이터가 필요합니다. 이 환경이 없으면 통합시험은 건너뛰며, 시험 출력의 `skipped` 수를 확인해야 합니다.
+
+2026-10-22 검증: Python 3.11.15, Pillow 11.3.0, PyMuPDF 1.28.2, pytesseract 0.3.13, Tesseract 5.5.0에서 시험 7개 통과, 건너뜀 0개. 합성 PNG 1페이지와 PDF 2페이지의 실제 OCR을 확인했습니다.
 
 ### 공개 전 점검
 
@@ -369,7 +386,7 @@ python -m unittest discover -s tests -v
 - [ ] 문서 유형별 OCR 설정 파일
 - [ ] 표·좌표 기반 필드 후보 추출
 - [ ] 사람이 확정한 값만 구조화 데이터로 내보내는 검토 단계
-- [ ] 합성 샘플 기반 CLI 통합시험
+- [x] 합성 샘플 기반 CLI 통합시험
 - [ ] 처리 실행별 해시·설정·검토 결과 비교 리포트
 
 확장 기능은 증거 추적성과 사람 승인 경계를 유지하는 범위에서만 추가합니다.

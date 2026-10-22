@@ -42,21 +42,44 @@ def create_output_tree(output_dir: Path) -> tuple[Path, Path]:
     return pages_dir, ocr_dir
 
 
+def check_ocr_environment(input_path: Path, language: str) -> None:
+    try:
+        from PIL import Image
+        import pytesseract
+        if input_path.suffix.lower() == ".pdf":
+            import pymupdf
+    except ImportError as error:
+        raise RuntimeError("OCR dependencies are missing. Run: python -m pip install -r requirements.txt (Pillow, pytesseract, PyMuPDF).") from error
+
+    try:
+        pytesseract.get_tesseract_version()
+        available = {name.replace("\\", "/") for name in pytesseract.get_languages(config="")}
+    except pytesseract.TesseractNotFoundError as error:
+        raise RuntimeError("Tesseract executable was not found. Install Tesseract and add it to PATH.") from error
+    except pytesseract.TesseractError as error:
+        raise RuntimeError(f"Tesseract environment check failed: {error}") from error
+
+    missing = set(language.replace("\\", "/").split("+")) - available
+    if missing:
+        raise RuntimeError(f"Tesseract language data not found: {sorted(missing)}")
+
+
 def render_input(input_path: Path, pages_dir: Path, dpi: int) -> list[Path]:
     if input_path.suffix.lower() == ".pdf":
         try:
-            import fitz
+            import pymupdf as fitz
         except ImportError as error:
             raise RuntimeError("PyMuPDF is required. Run: python -m pip install -r requirements.txt") from error
-        document = fitz.open(input_path)
         page_paths: list[Path] = []
         scale = dpi / 72.0
-        for page_index, page in enumerate(document, start=1):
-            rendered = pages_dir / f"page-{page_index:04d}.png"
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-            pixmap.save(rendered)
-            page_paths.append(rendered)
-        document.close()
+        with fitz.open(input_path) as document:
+            if document.page_count == 0:
+                raise ValueError("Input PDF contains no pages.")
+            for page_index, page in enumerate(document, start=1):
+                rendered = pages_dir / f"page-{page_index:04d}.png"
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+                pixmap.save(rendered)
+                page_paths.append(rendered)
         return page_paths
 
     if input_path.suffix.lower() not in IMAGE_SUFFIXES:
@@ -134,6 +157,8 @@ def run(input_path: Path, output_dir: Path, dpi: int, language: str) -> dict[str
     if not 72 <= dpi <= 600:
         raise ValueError("DPI must be between 72 and 600.")
 
+    check_ocr_environment(resolved_input, language)
+    input_sha256 = sha256_file(resolved_input)
     pages_dir, ocr_dir = create_output_tree(resolved_output)
     page_images = render_input(resolved_input, pages_dir, dpi)
     page_summaries: list[dict[str, Any]] = []
@@ -166,6 +191,9 @@ def run(input_path: Path, output_dir: Path, dpi: int, language: str) -> dict[str
                 }
             )
 
+    if sha256_file(resolved_input) != input_sha256:
+        raise RuntimeError("Input file changed during processing. Outputs are incomplete; retry with a new output directory.")
+
     with (resolved_output / "review_queue.csv").open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=["page", "classification", "mean_confidence", "reason"])
         writer.writeheader()
@@ -174,7 +202,7 @@ def run(input_path: Path, output_dir: Path, dpi: int, language: str) -> dict[str
     manifest = {
         "schema_version": "1.0",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "input": {"filename": resolved_input.name, "sha256": sha256_file(resolved_input)},
+        "input": {"filename": resolved_input.name, "sha256": input_sha256},
         "ocr": {"language": language, "dpi": dpi},
         "pages": page_summaries,
         "review_queue_count": len(review_rows),

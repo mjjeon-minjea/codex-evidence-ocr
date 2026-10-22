@@ -7,7 +7,7 @@
 ## manifest.json
 
 - `input.filename`: 사용자가 지정한 원본 파일명
-- `input.sha256`: 원본 파일의 SHA-256
+- `input.sha256`: 처리 전에 계산한 원본 SHA-256. 처리 후 같은 해시인지 확인한 실행에만 성공 manifest를 기록한다.
 - `pages`: 페이지별 출력 요약
 - `review_queue_count`: 검토 대상으로 분리된 페이지 수
 
